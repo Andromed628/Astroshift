@@ -1,0 +1,19 @@
+{
+  "spherex-01": {
+    "dataset_id": "spherex-01",
+    "target_name": "SPHEREx Deep Field Alpha",
+    "ra_deg": 184.56,
+    "dec_deg": -45.12,
+    "image_a": "https://raw.githubusercontent.com/Andromed628/astroshift/main/backend/data/sample_frame_a.png",
+    "image_b": "https://raw.githubusercontent.com/Andromed628/astroshift/main/backend/data/sample_frame_b.png",
+    "delta_anomalies": [
+      {
+        "id": 1,
+        "x": 120,
+        "y": 340,
+        "flux_change_pct": 14.2,
+        "type": "Transient / Asteroid"
+      }
+    ]
+  }
+}
