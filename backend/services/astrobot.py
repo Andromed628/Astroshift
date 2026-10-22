@@ -37,7 +37,8 @@ async def generate_astrobot_reply(
     # 1. VISUAL QUERY: Gemini 1.5 Flash -> NVIDIA NIM Fallback
     if image_base64:
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
+
             res = await model.generate_content_async([
                 SYSTEM_PROMPT,
                 {"mime_type": "image/png", "data": image_base64},
@@ -75,7 +76,7 @@ async def generate_astrobot_reply(
         messages.append({"role": "user", "content": message})
 
         completion = await groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=model="llama-3.1-8b-instant",
             messages=messages,
             temperature=0.3,
             max_tokens=512
