@@ -37,7 +37,7 @@ async def generate_astrobot_reply(
     # 1. VISUAL QUERY: Gemini 1.5 Flash -> NVIDIA NIM Fallback
     if image_base64:
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-3.6-flash")
 
             res = await model.generate_content_async([
                 SYSTEM_PROMPT,
