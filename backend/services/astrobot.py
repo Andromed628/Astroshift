@@ -76,7 +76,7 @@ async def generate_astrobot_reply(
         messages.append({"role": "user", "content": message})
 
         completion = await groq_client.chat.completions.create(
-            model=model="llama-3.1-8b-instant",
+            model="llama-3.1-8b-instant",
             messages=messages,
             temperature=0.3,
             max_tokens=512
