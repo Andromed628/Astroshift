@@ -1,6 +1,7 @@
 import os
 import google.generativeai as genai
 from openai import AsyncOpenAI
+from typing import Optional, List, Dict, Any
 from .astrobot_science import generate_scientific_reply_async, SYSTEM_CONTEXT
 
 # Configure Gemini fallback
@@ -16,7 +17,12 @@ nvidia_client = AsyncOpenAI(
 ) if NVIDIA_KEY else None
 
 
-async def ask_astrobot(message: str, history: list = None, dataset_context: dict = None):
+async def ask_astrobot(
+    message: str, 
+    history: Optional[List[Dict[str, Any]]] = None, 
+    dataset_context: Optional[Dict[str, Any]] = None,
+    image_base64: Optional[str] = None
+):
     """
     Primary entry point for AstroBot V2 interface.
     
@@ -74,4 +80,3 @@ async def ask_astrobot(message: str, history: list = None, dataset_context: dict
     raise RuntimeError(
         "AstroBot scientific telemetry is currently unavailable across all AI model clusters."
     )
-
