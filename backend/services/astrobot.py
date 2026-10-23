@@ -1,88 +1,77 @@
 import os
-from typing import Optional, List, Dict, Any
 import google.generativeai as genai
-from groq import AsyncGroq
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-from .astrobot_science import generate_scientific_reply_async
+from .astrobot_science import generate_scientific_reply_async, SYSTEM_CONTEXT
 
-load_dotenv()
+# Configure Gemini fallback
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
 
-groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY", "mock_key"))
-
-if os.getenv("GEMINI_API_KEY"):
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
+# Configure NVIDIA NIM fallback (uses OpenAI SDK with NVIDIA endpoint)
+NVIDIA_KEY = os.getenv("NVIDIA_API_KEY")
 nvidia_client = AsyncOpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key=os.getenv("NVIDIA_API_KEY", "mock_key")
-)
+    api_key=NVIDIA_KEY
+) if NVIDIA_KEY else None
 
-SYSTEM_PROMPT = """
-You are AstroBot, an aerospace-grade AI co-pilot for AstroShift (NASA Space Apps Challenge 2026).
-Your domain expertise:
-1. NASA SPHEREx infrared sky survey dataset analysis and broadband flux metrics.
-2. Celestial coordinate transformations (Right Ascension, Declination, WCS mapping).
-3. Image registration, star/asteroid alignment, and frame differencing anomalies.
 
-Keep responses precise, scientific, concise, and structured for researchers and judges.
-"""
-
-async def generate_astrobot_reply(
-    message: str,
-    history: List[Dict[str, str]],
-    image_base64: Optional[str] = None,
-    dataset_context: Optional[Dict[str, Any]] = None
-) -> str:
+async def ask_astrobot(message: str, history: list = None, dataset_context: dict = None):
+    """
+    Primary entry point for AstroBot V2 interface.
     
-    # 1. VISUAL QUERY: Gemini 1.5 Flash -> NVIDIA NIM Fallback
-    if image_base64:
-        try:
-            model = genai.GenerativeModel("gemini-3.6-flash")
-
-            res = await model.generate_content_async([
-                SYSTEM_PROMPT,
-                {"mime_type": "image/png", "data": image_base64},
-                f"Context: {dataset_context or {}}\nUser Question: {message}"
-            ])
-            return res.text
-        except Exception as e:
-            print(f"[AstroBot] Gemini failed: {e}. Falling back to NVIDIA NIM...")
-
-        try:
-            res = await nvidia_client.chat.completions.create(
-                model="nvidia/nemotron-3.5-super-vl-120b-a12b",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"{SYSTEM_PROMPT}\n{message}"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
-                    ]
-                }],
-                max_tokens=512
-            )
-            return res.choices[0].message.content
-        except Exception as e:
-            print(f"[AstroBot] NVIDIA Vision failed: {e}. Falling back to Groq Text...")
-    # 2. TEXT QUERY: AstroBot V2 with Gemini Fallback
+    3-Tier Resilience Architecture:
+    1. Groq (Primary: Qwen 27B / Llama 3)
+    2. NVIDIA NIM (Secondary: Llama 3.1 70B Instruct)
+    3. Gemini (Tertiary: Gemini 1.5 Flash)
+    """
+    # --------------------------------------------------
+    # TIER 1: Primary Groq Scientific Engine
+    # --------------------------------------------------
     try:
-        reply = await generate_scientific_reply_async(
+        return await generate_scientific_reply_async(
             message=message,
             history=history,
             dataset_context=dataset_context
         )
-        return reply
+    except Exception as groq_error:
+        print(f"[AstroBot] Groq primary failed: {groq_error}. Escalating to NVIDIA NIM...")
 
-    except Exception as e:
-        print(f"[AstroBot] Groq V2 rate-limited/failed: {e}. Falling back to Gemini...")
+    # --------------------------------------------------
+    # TIER 2: Secondary NVIDIA NIM Fallback
+    # --------------------------------------------------
+    if nvidia_client:
         try:
-            gemini_model = genai.GenerativeModel("gemini-3.6-flash")
-            fallback_reply = gemini_model.generate_content(
-                f"Act as a NASA SPHEREx scientist. Answer this concisely: {message}"
+            response = await nvidia_client.chat.completions.create(
+                model="meta/llama-3.1-70b-instruct",
+                messages=[
+                    {"role": "system", "content": SYSTEM_CONTEXT},
+                    {"role": "user", "content": message}
+                ],
+                temperature=0.3,
+                max_tokens=1024
             )
-            return fallback_reply.text
-        except Exception as gemini_error:
-            print(f"[AstroBot] Gemini fallback also failed: {gemini_error}")
-            return "AstroBot telemetry offline. Please check server logs."
+            reply = response.choices[0].message.content
+            if reply and reply.strip():
+                return reply.strip()
+        except Exception as nvidia_error:
+            print(f"[AstroBot] NVIDIA NIM fallback failed: {nvidia_error}. Escalating to Gemini...")
 
+    # --------------------------------------------------
+    # TIER 3: Tertiary Gemini 1.5 Flash Fallback
+    # --------------------------------------------------
+    if GEMINI_KEY:
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            prompt_payload = f"{SYSTEM_CONTEXT}\n\nUser Question:\n{message}"
+
+            response = await model.generate_content_async(prompt_payload)
+            if response and response.text and response.text.strip():
+                return response.text.strip()
+        except Exception as gemini_error:
+            print(f"[AstroBot] Gemini fallback failed: {gemini_error}")
+
+    raise RuntimeError(
+        "AstroBot scientific telemetry is currently unavailable across all AI model clusters."
+    )
 
