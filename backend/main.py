@@ -53,7 +53,7 @@ class ChatResponse(BaseModel):
 
 
 # --------------------------------------------------
-# ROUTE 1: HEALTH CHECK
+# ROUTE 1: HEALTH CHECK (FIXES RENDER 404 BUILD HANG)
 # --------------------------------------------------
 @app.get("/")
 @app.get("/api/health")
