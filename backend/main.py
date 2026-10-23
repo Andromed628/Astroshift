@@ -1,7 +1,7 @@
 import os
 import asyncio
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -38,19 +38,28 @@ app.add_middleware(
 # --------------------------------------------------
 # REQUEST & RESPONSE SCHEMAS
 # --------------------------------------------------
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
     message: str
-    history: Optional[List[dict]] = None
-    dataset_context: Optional[dict] = None
+    history: Optional[List[ChatMessage]] = []
+    image_base64: Optional[str] = None
+    dataset_context: Optional[Dict[str, Any]] = None
+
+class ChatResponse(BaseModel):
+    reply: str
 
 
 # --------------------------------------------------
 # ROUTE 1: HEALTH CHECK
 # --------------------------------------------------
 @app.get("/")
+@app.get("/api/health")
 def health_check():
     return {
-        "status": "online",
+        "status": "healthy",
         "system": "AstroShift Core Engine V2",
         "environment": "Render Production"
     }
@@ -59,7 +68,7 @@ def health_check():
 # --------------------------------------------------
 # ROUTE 2: ASTROBOT AI CHAT (3-TIER FAILOVER)
 # --------------------------------------------------
-@app.post("/api/chat")
+@app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(payload: ChatRequest):
     if not payload.message or not payload.message.strip():
         raise HTTPException(status_code=400, detail="Chat message cannot be empty.")
@@ -67,10 +76,11 @@ async def chat_endpoint(payload: ChatRequest):
     try:
         reply = await ask_astrobot(
             message=payload.message,
-            history=payload.history,
-            dataset_context=payload.dataset_context
+            history=[msg.model_dump() for msg in payload.history] if payload.history else None,
+            dataset_context=payload.dataset_context,
+            image_base64=payload.image_base64
         )
-        return {"response": reply}
+        return ChatResponse(reply=reply)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
