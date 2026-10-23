@@ -4,6 +4,7 @@ import google.generativeai as genai
 from groq import AsyncGroq
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from .astrobot_science import generate_scientific_reply_async
 
 load_dotenv()
 
@@ -63,27 +64,25 @@ async def generate_astrobot_reply(
             return res.choices[0].message.content
         except Exception as e:
             print(f"[AstroBot] NVIDIA Vision failed: {e}. Falling back to Groq Text...")
-
-    # 2. TEXT QUERY: Groq (Llama 3.3 70B)
+    # 2. TEXT QUERY: AstroBot V2 with Gemini Fallback
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        if dataset_context:
-            messages.append({"role": "system", "content": f"Active Frame Context: {dataset_context}"})
-        
-        for msg in history[-6:]:
-            messages.append({"role": msg["role"], "content": msg["content"]})
-            
-        messages.append({"role": "user", "content": message})
-
-        completion = await groq_client.chat.completions.create(
-            model="qwen/qwen3.8-27b",
-
-            messages=messages,
-            temperature=0.3,
-            max_tokens=512
+        reply = await generate_scientific_reply_async(
+            message=message,
+            history=history,
+            dataset_context=dataset_context
         )
-        return completion.choices[0].message.content
+        return reply
 
     except Exception as e:
-        print(f"[AstroBot] Groq Text failed: {e}")
-        return "AstroBot telemetry offline. Please check server logs."
+        print(f"[AstroBot] Groq V2 rate-limited/failed: {e}. Falling back to Gemini...")
+        try:
+            gemini_model = genai.GenerativeModel("gemini-3.6-flash")
+            fallback_reply = gemini_model.generate_content(
+                f"Act as a NASA SPHEREx scientist. Answer this concisely: {message}"
+            )
+            return fallback_reply.text
+        except Exception as gemini_error:
+            print(f"[AstroBot] Gemini fallback also failed: {gemini_error}")
+            return "AstroBot telemetry offline. Please check server logs."
+
+
