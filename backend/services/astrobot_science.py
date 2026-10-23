@@ -1,4 +1,3 @@
-
 import os
 import json
 from pathlib import Path
@@ -120,24 +119,24 @@ def generate_scientific_reply(
     # --------------------------------------------------
 
     if isinstance(history, list):
+        total_chars = 0
+        MAX_CHARS = 16000
 
-        for item in history[-MAX_HISTORY_MESSAGES:]:
-
+        safe_history = []
+        for item in reversed(history[-MAX_HISTORY_MESSAGES:]):
             if not isinstance(item, dict):
                 continue
-
+            
             role = item.get("role")
-            content = item.get("content")
+            content = item.get("content", "")
 
-            if (
-                role in ("user", "assistant")
-                and isinstance(content, str)
-                and content.strip()
-            ):
-                messages.append({
-                    "role": role,
-                    "content": content
-                })
+            if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+                if total_chars + len(content) > MAX_CHARS: 
+                    break 
+                safe_history.insert(0, {"role": role, "content": content})
+                total_chars += len(content)
+
+        messages.extend(safe_history)
 
     # --------------------------------------------------
     # CURRENT USER QUESTION
@@ -157,7 +156,6 @@ def generate_scientific_reply(
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        reasoning_effort="none",
         max_completion_tokens=1200
     )
 
