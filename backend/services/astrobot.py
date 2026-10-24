@@ -29,10 +29,11 @@ async def ask_astrobot(
     history_list = history or []
     context_str = f"\nActive Frame Context: {dataset_context}" if dataset_context else ""
     
-    # Read environment variables dynamically per request
     groq_key = os.getenv("GROQ_API_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")
     nvidia_key = os.getenv("NVIDIA_API_KEY")
+
+    error_logs = []
 
     # --------------------------------------------------
     # MULTIMODAL / VISION PATH
@@ -51,7 +52,7 @@ async def ask_astrobot(
                 if res and res.text and res.text.strip():
                     return res.text.strip()
             except Exception as e:
-                print(f"[AstroBot] Gemini Vision error: {e}")
+                error_logs.append(f"Gemini Vision: {str(e)}")
 
         if nvidia_key:
             try:
@@ -74,7 +75,7 @@ async def ask_astrobot(
                 if reply and reply.strip():
                     return reply.strip()
             except Exception as e:
-                print(f"[AstroBot] NVIDIA Vision error: {e}")
+                error_logs.append(f"NVIDIA Vision: {str(e)}")
 
     # --------------------------------------------------
     # TEXT FAILOVER PATH (Groq -> NVIDIA -> Gemini)
@@ -98,7 +99,7 @@ async def ask_astrobot(
             if reply and reply.strip():
                 return reply.strip()
         except Exception as e:
-            print(f"[AstroBot] Groq Text error: {e}")
+            error_logs.append(f"Groq: {str(e)}")
 
     # Tier 2: NVIDIA NIM
     if nvidia_key:
@@ -117,7 +118,7 @@ async def ask_astrobot(
             if reply and reply.strip():
                 return reply.strip()
         except Exception as e:
-            print(f"[AstroBot] NVIDIA NIM Text error: {e}")
+            error_logs.append(f"NVIDIA NIM: {str(e)}")
 
     # Tier 3: Gemini 1.5 Flash
     if gemini_key:
@@ -129,10 +130,9 @@ async def ask_astrobot(
             if res and res.text and res.text.strip():
                 return res.text.strip()
         except Exception as e:
-            print(f"[AstroBot] Gemini Text error: {e}")
+            error_logs.append(f"Gemini: {str(e)}")
 
-    raise RuntimeError(
-        f"AstroBot telemetry unavailable. Active Key Status -> GROQ: {bool(groq_key)}, NVIDIA: {bool(nvidia_key)}, GEMINI: {bool(gemini_key)}"
-    )
+    diag_info = " | ".join(error_logs) if error_logs else "No active provider keys found"
+    raise RuntimeError(f"AstroBot telemetry failed. Provider Errors -> {diag_info}")
 
 generate_astrobot_reply = ask_astrobot
