@@ -10,16 +10,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY")) if os.getenv("GROQ_API_KEY") else None
-
-if os.getenv("GEMINI_API_KEY"):
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-nvidia_client = AsyncOpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=os.getenv("NVIDIA_API_KEY")
-) if os.getenv("NVIDIA_API_KEY") else None
-
 SYSTEM_PROMPT = """
 You are AstroBot, an aerospace-grade AI co-pilot for AstroShift (NASA Space Apps Challenge 2026).
 Your domain expertise:
@@ -39,24 +29,36 @@ async def ask_astrobot(
     history_list = history or []
     context_str = f"\nActive Frame Context: {dataset_context}" if dataset_context else ""
     
+    # Read environment variables dynamically per request
+    groq_key = os.getenv("GROQ_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    nvidia_key = os.getenv("NVIDIA_API_KEY")
+
+    # --------------------------------------------------
+    # MULTIMODAL / VISION PATH
+    # --------------------------------------------------
     if image_base64:
         clean_b64 = image_base64.split(",")[-1] if "," in image_base64 else image_base64
         
-        if os.getenv("GEMINI_API_KEY"):
+        if gemini_key:
             try:
+                genai.configure(api_key=gemini_key)
                 img_bytes = base64.b64decode(clean_b64)
                 pil_img = Image.open(io.BytesIO(img_bytes))
                 model = genai.GenerativeModel("gemini-1.5-flash")
-                
                 prompt_content = f"{SYSTEM_PROMPT}{context_str}\n\nUser Question:\n{message}"
                 res = await model.generate_content_async([prompt_content, pil_img])
                 if res and res.text and res.text.strip():
                     return res.text.strip()
             except Exception as e:
-                print(f"[AstroBot] Gemini Vision failed: {e}. Trying NVIDIA NIM Vision...")
+                print(f"[AstroBot] Gemini Vision error: {e}")
 
-        if nvidia_client:
+        if nvidia_key:
             try:
+                nvidia_client = AsyncOpenAI(
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    api_key=nvidia_key
+                )
                 res = await nvidia_client.chat.completions.create(
                     model="nvidia/nemotron-3.5-super-vl-120b-a12b",
                     messages=[{
@@ -72,15 +74,20 @@ async def ask_astrobot(
                 if reply and reply.strip():
                     return reply.strip()
             except Exception as e:
-                print(f"[AstroBot] NVIDIA Vision failed: {e}. Proceeding to text failover...")
+                print(f"[AstroBot] NVIDIA Vision error: {e}")
 
+    # --------------------------------------------------
+    # TEXT FAILOVER PATH (Groq -> NVIDIA -> Gemini)
+    # --------------------------------------------------
     messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}{context_str}"}]
     for msg in history_list[-6:]:
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": message})
 
-    if groq_client:
+    # Tier 1: Groq
+    if groq_key:
         try:
+            groq_client = AsyncGroq(api_key=groq_key)
             completion = await groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=messages,
@@ -91,10 +98,15 @@ async def ask_astrobot(
             if reply and reply.strip():
                 return reply.strip()
         except Exception as e:
-            print(f"[AstroBot] Groq Text failed: {e}. Escalating to NVIDIA NIM...")
+            print(f"[AstroBot] Groq Text error: {e}")
 
-    if nvidia_client:
+    # Tier 2: NVIDIA NIM
+    if nvidia_key:
         try:
+            nvidia_client = AsyncOpenAI(
+                base_url="https://integrate.api.nvidia.com/v1",
+                api_key=nvidia_key
+            )
             res = await nvidia_client.chat.completions.create(
                 model="meta/llama-3.1-70b-instruct",
                 messages=messages,
@@ -105,18 +117,22 @@ async def ask_astrobot(
             if reply and reply.strip():
                 return reply.strip()
         except Exception as e:
-            print(f"[AstroBot] NVIDIA NIM Text failed: {e}. Escalating to Gemini...")
+            print(f"[AstroBot] NVIDIA NIM Text error: {e}")
 
-    if os.getenv("GEMINI_API_KEY"):
+    # Tier 3: Gemini 1.5 Flash
+    if gemini_key:
         try:
+            genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
             full_text_prompt = f"{SYSTEM_PROMPT}{context_str}\n\nUser Question:\n{message}"
             res = await model.generate_content_async(full_text_prompt)
             if res and res.text and res.text.strip():
                 return res.text.strip()
         except Exception as e:
-            print(f"[AstroBot] Gemini Text failed: {e}")
+            print(f"[AstroBot] Gemini Text error: {e}")
 
-    raise RuntimeError("AstroBot scientific telemetry is currently unavailable across all AI model clusters.")
+    raise RuntimeError(
+        f"AstroBot telemetry unavailable. Active Key Status -> GROQ: {bool(groq_key)}, NVIDIA: {bool(nvidia_key)}, GEMINI: {bool(gemini_key)}"
+    )
 
 generate_astrobot_reply = ask_astrobot
