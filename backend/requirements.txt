@@ -10,3 +10,5 @@ astropy==6.1.1
 astroalign==2.5.0
 numpy==1.26.4
 pandas==2.2.2
+python-multipart>=0.0.9
+Pillow>=10.0.0
