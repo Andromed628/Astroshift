@@ -1,50 +1,46 @@
 import os
-import json
-from fastapi import FastAPI, HTTPException
+import asyncio
+from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
-from services.astrobot import generate_astrobot_reply
+# Internal backend service imports
+from services.astrobot import ask_astrobot
+from services.astronomical_engine import (
+    parse_fits_header,
+    align_images,
+    resolve_celestial_target,
+    numpy_to_base64_png
+)
 
 load_dotenv()
 
 app = FastAPI(
     title="AstroShift Backend API",
-    version="1.0.0",
-    description="SPHEREx Dataset Processing & AstroBot API"
+    description="SPHEREx Astronomical Processing Engine & AstroBot AI Telemetry",
+    version="2.0.0"
 )
 
-# CORS Setup
+# --------------------------------------------------
+# CORS CONFIGURATION
+# --------------------------------------------------
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
+origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins if origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic Schemas
-class BlinkRequest(BaseModel):
-    dataset_id: str = "spherex-01"
 
-class DeltaAnomaly(BaseModel):
-    id: int
-    x: int
-    y: int
-    flux_change_pct: float
-    type: str
-
-class BlinkResponse(BaseModel):
-    dataset_id: str
-    target_name: str
-    ra_deg: float
-    dec_deg: float
-    image_a: str
-    image_b: str
-    delta_anomalies: List[DeltaAnomaly]
-
+# --------------------------------------------------
+# REQUEST & RESPONSE SCHEMAS
+# --------------------------------------------------
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -58,46 +54,93 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
 
-# Endpoints
-@app.get("/")
-def read_root():
-    return {"system": "AstroShift Backend API", "status": "active"}
 
+# --------------------------------------------------
+# ROUTE 1: HEALTH CHECK (RENDER MONITORING)
+# --------------------------------------------------
+@app.get("/")
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "service": "AstroShift API"}
+    return {
+        "status": "healthy",
+        "system": "AstroShift Core Engine V2",
+        "environment": "Render Production"
+    }
 
-@app.post("/api/blink-data", response_model=BlinkResponse)
-def get_blink_data(payload: BlinkRequest):
-    mock_path = os.path.join(os.path.dirname(__file__), "data", "mockData.json")
-    
-    if os.path.exists(mock_path):
-        with open(mock_path, "r") as f:
-            data = json.load(f)
-            dataset = data.get(payload.dataset_id, data.get("spherex-01"))
-            return BlinkResponse(**dataset)
-            
-    return BlinkResponse(
-        dataset_id=payload.dataset_id,
-        target_name="SPHEREx Deep Field Alpha",
-        ra_deg=184.56,
-        dec_deg=-45.12,
-        image_a="https://via.placeholder.com/512?text=SPHEREx+Frame+A",
-        image_b="https://via.placeholder.com/512?text=SPHEREx+Frame+B",
-        delta_anomalies=[
-            DeltaAnomaly(id=1, x=120, y=340, flux_change_pct=14.2, type="Transient / Asteroid")
-        ]
-    )
 
+# --------------------------------------------------
+# ROUTE 2: ASTROBOT AI CHAT (3-TIER FAILOVER)
+# --------------------------------------------------
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(payload: ChatRequest):
+    if not payload.message or not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Chat message cannot be empty.")
+    
     try:
-        reply = await generate_astrobot_reply(
+        reply = await ask_astrobot(
             message=payload.message,
-            history=[msg.model_dump() for msg in payload.history],
-            image_base64=payload.image_base64,
-            dataset_context=payload.dataset_context
+            history=[msg.model_dump() for msg in payload.history] if payload.history else None,
+            dataset_context=payload.dataset_context,
+            image_base64=payload.image_base64
         )
         return ChatResponse(reply=reply)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------------------------------
+# ROUTE 3: CELESTIAL TARGET SEARCH RESOLVER
+# --------------------------------------------------
+@app.get("/api/search")
+async def search_celestial_target(query: str = Query(..., description="Target name, e.g., Messier 31")):
+    try:
+        result = resolve_celestial_target(query)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# --------------------------------------------------
+# ROUTE 4: ASTRONOMICAL FITS BLINK & ALIGNMENT DATA
+# --------------------------------------------------
+@app.post("/api/blink-data")
+async def process_blink_data(
+    file_a: UploadFile = File(...),
+    file_b: UploadFile = File(...)
+):
+    """
+    Receives two FITS files, parses headers, aligns Frame B onto Frame A 
+    using astroalign, and returns Base64 PNG data strings.
+    """
+    try:
+        bytes_a = await file_a.read()
+        bytes_b = await file_b.read()
+
+        # Parse FITS files
+        data_a, meta_a = parse_fits_header(bytes_a)
+        data_b, meta_b = parse_fits_header(bytes_b)
+
+        if data_a is None or data_b is None:
+            raise HTTPException(status_code=400, detail="Invalid FITS file structure.")
+
+        # Non-blocking star registration in worker thread
+        aligned_b, _ = await asyncio.to_thread(align_images, data_b, data_a)
+
+        # Convert arrays to Base64 PNG data URLs
+        b64_a = f"data:image/png;base64,{numpy_to_base64_png(data_a)}"
+        b64_b = f"data:image/png;base64,{numpy_to_base64_png(aligned_b)}"
+
+        return {
+            "status": "success",
+            "dataset_id": "spherex-fits-live",
+            # Standardized keys for Trina's frontend comparator:
+            "image_a": b64_a,
+            "image_b": b64_b,
+            # Explicit backend field keys:
+            "frame_a_b64": b64_a,
+            "frame_b_aligned_b64": b64_b,
+            "metadata_a": meta_a,
+            "metadata_b": meta_b
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Blink processing error: {str(e)}")
