@@ -150,6 +150,33 @@ def test_suppression_filtered_matrix_known_case():
     assert filtered[5, 5] == 100.0
 
 
+def test_suppression_pandas_filtering_expected_output():
+    # Verify Pandas DataFrame filtering produces exact expected values.
+    delta = np.array([[0.0, 10.0, 2.0], [5.0, 1.0, 20.0], [0.0, 3.0, 1.0]])
+    filtered, mask, stats = suppress_background_noise(delta, sigma=1.0)
+    # mean=6.22..., std=6.0..., threshold=mean+std≈12.2; pixels > threshold: 20.0 only
+    expected_mask = np.array([[False, False, False], [False, False, True], [False, False, False]])
+    np.testing.assert_array_equal(mask, expected_mask)
+    expected_filtered = np.where(mask, delta, 0.0)
+    np.testing.assert_array_equal(filtered, expected_filtered)
+    assert mask.dtype == bool
+    assert stats["anomaly_pixel_count"] == 1
+    assert stats["has_anomalies"] is True
+
+
+def test_suppression_pandas_constant_matrix_no_anomalies():
+    # Constant matrix edge case through Pandas-based filtering.
+    delta = np.full((4, 4), 7.0)
+    filtered, mask, stats = suppress_background_noise(delta, sigma=3.0)
+    assert stats["background_mean"] == 7.0
+    assert stats["background_std"] == 0.0
+    assert stats["threshold"] == 7.0
+    assert not np.any(mask)
+    assert stats["anomaly_pixel_count"] == 0
+    assert stats["has_anomalies"] is False
+    np.testing.assert_array_equal(filtered, np.zeros_like(delta))
+
+
 def test_suppression_mask_bool_dtype_and_strict_threshold():
     delta = np.array([[0.0, 10.0]])
     _, mask, stats = suppress_background_noise(delta, sigma=1.0)

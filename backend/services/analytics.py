@@ -172,16 +172,27 @@ def suppress_background_noise(
 
     clean = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
+    # NumPy provides the background statistics for the threshold.
     background_mean = float(np.mean(clean))
     background_std = float(np.std(clean))  # population std over all pixels
     threshold = background_mean + sigma * background_std
 
-    anomaly_mask = clean > threshold
+    # Pandas DataFrame performs the actual noise-filtering operation.
+    rows, cols = clean.shape
+    flat = clean.ravel()
+    df = pd.DataFrame({
+        "row": np.repeat(np.arange(rows), cols),
+        "col": np.tile(np.arange(cols), rows),
+        "delta": flat,
+    })
+    df["anomaly"] = df["delta"] > threshold
+    df["filtered"] = np.where(df["anomaly"], df["delta"], 0.0)
 
-    filtered_matrix = np.where(anomaly_mask, clean, 0.0).astype(np.float64)
+    anomaly_mask = df["anomaly"].values.reshape(rows, cols)
+    filtered_matrix = df["filtered"].values.reshape(rows, cols).astype(np.float64)
 
-    anomaly_pixel_count = int(np.count_nonzero(anomaly_mask))
-    total_pixel_count = int(clean.size)
+    anomaly_pixel_count = int(df["anomaly"].sum())
+    total_pixel_count = int(len(df))
 
     stats: Dict[str, Any] = {
         "background_mean": background_mean,
