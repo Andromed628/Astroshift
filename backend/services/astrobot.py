@@ -1,138 +1,148 @@
 import os
-import io
-import base64
-from typing import Optional, List, Dict, Any
-import google.generativeai as genai
+import logging
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from groq import AsyncGroq
+import google.generativeai as genai
 from openai import AsyncOpenAI
-from PIL import Image
-from dotenv import load_dotenv
 
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("astrobot")
 
-SYSTEM_PROMPT = """
-You are AstroBot, an aerospace-grade AI co-pilot for AstroShift (NASA Space Apps Challenge 2026).
-Your domain expertise:
-1. NASA SPHEREx infrared sky survey dataset analysis and broadband flux metrics.
-2. Celestial coordinate transformations (Right Ascension, Declination, WCS mapping).
-3. Image registration, star/asteroid alignment, and frame differencing anomalies.
+app = FastAPI(title="AstroShift AstroBot API")
 
-Keep responses precise, scientific, concise, and structured for researchers and judges.
+# Setup CORS using Render environment variable
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API Keys from Render Environment Variables
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+
+# 1. Initialize Groq Client for Qwen Text/Science Model
+groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+QWEN_MODEL = "qwen/qwen3.8-27b"
+
+# 2. Configure Gemini Vision
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+# 3. Initialize NVIDIA Async Client for Vision Fallback
+nvidia_client = AsyncOpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key=NVIDIA_API_KEY
+) if NVIDIA_API_KEY else None
+
+# Prompts
+SPHEREX_SYSTEM_PROMPT = """
+You are AstroBot, an expert astronomical AI assistant for the AstroShift platform.
+Specializing in infrared astronomy, SPHEREx payload science, and celestial anomaly identification.
+Provide rigorous, science-grounded explanations incorporating observational dataset context when provided.
 """
 
-async def ask_astrobot(
-    message: str,
-    history: Optional[List[Dict[str, Any]]] = None,
-    image_base64: Optional[str] = None,
-    dataset_context: Optional[Dict[str, Any]] = None
-) -> str:
-    history_list = history or []
-    context_str = f"\nActive Frame Context: {dataset_context}" if dataset_context else ""
-    
-    groq_key = os.getenv("GROQ_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    nvidia_key = os.getenv("NVIDIA_API_KEY")
+# Request Schemas
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
 
-    error_logs = []
+class TextChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    dataset_context: Optional[str] = None
 
-    # --------------------------------------------------
-    # MULTIMODAL / VISION PATH
-    # --------------------------------------------------
-    if image_base64:
-        clean_b64 = image_base64.split(",")[-1] if "," in image_base64 else image_base64
-        
-        if gemini_key:
-            try:
-                genai.configure(api_key=gemini_key)
-                img_bytes = base64.b64decode(clean_b64)
-                pil_img = Image.open(io.BytesIO(img_bytes))
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                prompt_content = f"{SYSTEM_PROMPT}{context_str}\n\nUser Question:\n{message}"
-                res = await model.generate_content_async([prompt_content, pil_img])
-                if res and res.text and res.text.strip():
-                    return res.text.strip()
-            except Exception as e:
-                error_logs.append(f"Gemini Vision: {str(e)}")
+class VisionChatRequest(BaseModel):
+    prompt: str
+    image_base64: str
 
-        if nvidia_key:
-            try:
-                nvidia_client = AsyncOpenAI(
-                    base_url="https://integrate.api.nvidia.com/v1",
-                    api_key=nvidia_key
-                )
-                res = await nvidia_client.chat.completions.create(
-                    model="nvidia/nemotron-3.5-super-vl-120b-a12b",
-                    messages=[{
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "AstroBot V2"}
+
+# =====================================================================
+# Text & Science Generation Route (Qwen via Groq)
+# =====================================================================
+@app.post("/api/chat/science")
+async def chat_science_text(request: TextChatRequest):
+    if not groq_client:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured on server.")
+
+    try:
+        # Build prompt payload with SPHEREx context
+        system_content = SPHEREX_SYSTEM_PROMPT
+        if request.dataset_context:
+            system_content += f"\n\n[Active Astronomical Dataset Context]\n{request.dataset_context}"
+
+        messages_payload = [{"role": "system", "content": system_content}]
+        messages_payload.extend([{"role": m.role, "content": m.content} for m in request.messages])
+
+        # Execute async call to Groq Qwen
+        response = await groq_client.chat.completions.create(
+            model=QWEN_MODEL,
+            messages=messages_payload,
+            temperature=0.3,
+            max_tokens=2048
+        )
+
+        reply_text = response.choices[0].message.content
+        return {
+            "role": "assistant",
+            "content": reply_text,
+            "provider": "GroqCloud",
+            "model": QWEN_MODEL
+        }
+
+    except Exception as e:
+        logger.error(f"Groq Qwen execution failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Text generation error: {str(e)}")
+
+# =====================================================================
+# Vision Route (Gemini Vision with NVIDIA Fallback)
+# =====================================================================
+@app.post("/api/chat/vision")
+async def chat_vision_analysis(request: VisionChatRequest):
+    # Attempt 1: Gemini Vision Primary Route
+    if GEMINI_API_KEY:
+        try:
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            image_data = {"mime_type": "image/jpeg", "data": request.image_base64}
+            response = model.generate_content([request.prompt, image_data])
+            return {
+                "role": "assistant",
+                "content": response.text,
+                "provider": "Gemini Vision"
+            }
+        except Exception as e:
+            logger.warning(f"Gemini Vision failed, attempting NVIDIA fallback: {str(e)}")
+
+    # Attempt 2: NVIDIA Vision Fallback Route
+    if nvidia_client:
+        try:
+            response = await nvidia_client.chat.completions.create(
+                model="nvidia/neva-22b",
+                messages=[
+                    {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": f"{SYSTEM_PROMPT}{context_str}\n\n{message}"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{clean_b64}"}}
-                        ]
-                    }],
-                    max_tokens=512
-                )
-                reply = res.choices[0].message.content
-                if reply and reply.strip():
-                    return reply.strip()
-            except Exception as e:
-                error_logs.append(f"NVIDIA Vision: {str(e)}")
-
-    # --------------------------------------------------
-    # TEXT FAILOVER PATH (Groq -> NVIDIA -> Gemini)
-    # --------------------------------------------------
-    messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}{context_str}"}]
-    for msg in history_list[-6:]:
-        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": message})
-
-    # Tier 1: Groq
-    if groq_key:
-        try:
-            groq_client = AsyncGroq(api_key=groq_key)
-            completion = await groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                temperature=0.3,
-                max_tokens=512
+                        "content": f'{request.prompt} <img src="data:image/jpeg;base64,{request.image_base64}" />'
+                    }
+                ],
+                max_tokens=1024
             )
-            reply = completion.choices[0].message.content
-            if reply and reply.strip():
-                return reply.strip()
+            return {
+                "role": "assistant",
+                "content": response.choices[0].message.content,
+                "provider": "NVIDIA Vision Fallback"
+            }
         except Exception as e:
-            error_logs.append(f"Groq: {str(e)}")
+            logger.error(f"NVIDIA Vision Fallback also failed: {str(e)}")
 
-    # Tier 2: NVIDIA NIM
-    if nvidia_key:
-        try:
-            nvidia_client = AsyncOpenAI(
-                base_url="https://integrate.api.nvidia.com/v1",
-                api_key=nvidia_key
-            )
-            res = await nvidia_client.chat.completions.create(
-                model="meta/llama-3.1-70b-instruct",
-                messages=messages,
-                temperature=0.3,
-                max_tokens=512
-            )
-            reply = res.choices[0].message.content
-            if reply and reply.strip():
-                return reply.strip()
-        except Exception as e:
-            error_logs.append(f"NVIDIA NIM: {str(e)}")
-
-    # Tier 3: Gemini 1.5 Flash
-    if gemini_key:
-        try:
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            full_text_prompt = f"{SYSTEM_PROMPT}{context_str}\n\nUser Question:\n{message}"
-            res = await model.generate_content_async(full_text_prompt)
-            if res and res.text and res.text.strip():
-                return res.text.strip()
-        except Exception as e:
-            error_logs.append(f"Gemini: {str(e)}")
-
-    diag_info = " | ".join(error_logs) if error_logs else "No active provider keys found"
-    raise RuntimeError(f"AstroBot telemetry failed. Provider Errors -> {diag_info}")
-
-generate_astrobot_reply = ask_astrobot
+    raise HTTPException(status_code=500, detail="Both Gemini Vision and NVIDIA Vision fallback failed.")
