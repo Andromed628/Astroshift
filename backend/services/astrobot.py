@@ -64,6 +64,7 @@ class VisionChatRequest(BaseModel):
     image_base64: str
 
 
+@app.get("/api/health")
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "AstroBot V2"}
