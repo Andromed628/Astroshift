@@ -13,6 +13,7 @@ from services.astronomical_engine import (
     resolve_celestial_target,
     numpy_to_base64_png
 )
+from services.analytics import analyze_delta
 
 load_dotenv()
 
@@ -33,6 +34,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# Pydantic Schemas
+# ---------------------------------------------------------------------------
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -45,6 +50,16 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+class DeltaAnalysisRequest(BaseModel):
+    matrix_a: List[List[float]]
+    matrix_b: List[List[float]]
+    sigma: Optional[float] = 3.0
+    include_plots: Optional[bool] = True
+
+# ---------------------------------------------------------------------------
+# API Endpoints
+# ---------------------------------------------------------------------------
 
 @app.get("/")
 @app.get("/api/health")
@@ -111,3 +126,19 @@ async def process_blink_data(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Blink processing error: {str(e)}")
+
+@app.post("/api/analytics/delta")
+async def compute_delta_analysis(request: DeltaAnalysisRequest):
+    try:
+        result = await asyncio.to_thread(
+            analyze_delta,
+            matrix_a=request.matrix_a,
+            matrix_b=request.matrix_b,
+            sigma=request.sigma,
+            include_plots=request.include_plots
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delta processing failure: {str(e)}")
