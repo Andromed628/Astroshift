@@ -5,8 +5,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
-from services.astrobot import ask_astrobot
+from services.astrobot import unified_chat_endpoint
 from services.astronomical_engine import (
     parse_fits_header,
     align_images,
