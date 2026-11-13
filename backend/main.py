@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv(override=True)
 import os
 import asyncio
 from typing import List, Optional, Dict, Any
@@ -5,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from services.astrobot import unified_chat_endpoint
+from services.astrobot import unified_chat_endpoint, UnifiedChatRequest
 from services.astronomical_engine import (
     parse_fits_header,
     align_images,
@@ -75,12 +77,8 @@ async def chat_endpoint(payload: ChatRequest):
         raise HTTPException(status_code=400, detail="Chat message cannot be empty.")
     
     try:
-        reply = await ask_astrobot(
-            message=payload.message,
-            history=[msg.model_dump() for msg in payload.history] if payload.history else None,
-            dataset_context=payload.dataset_context,
-            image_base64=payload.image_base64
-        )
+        res = await unified_chat_endpoint(UnifiedChatRequest(message=payload.message, history=[m.model_dump() for m in payload.history] if payload.history else [], dataset_context=payload.dataset_context or {}, image_base64=payload.image_base64))
+        reply = res.get("response", str(res)) if isinstance(res, dict) else str(res)
         return ChatResponse(reply=reply)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
