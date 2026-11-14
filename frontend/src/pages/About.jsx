@@ -61,13 +61,13 @@ const team = [
   },
   {
     initials: "S",
-    name: "Saayantaan",
+    name: "Sayantan",
     role: "Scientific analytics",
     contribution: "Numerical workflows, image subtraction and anomaly-analysis methods.",
   },
   {
     initials: "P",
-    name: "Pushpendu",
+    name: "Puspendu",
     role: "Science data & documentation",
     contribution: "Scientific datasets, FITS observations and research documentation.",
   },
