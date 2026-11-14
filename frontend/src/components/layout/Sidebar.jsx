@@ -15,7 +15,7 @@ const navigationGroups = [
   {
     label: "MISSION",
     items: [
-      { label: "Mission Control", to: "/", icon: LayoutDashboard, end: true },
+      { label: "Mission Control", to: "/mission-control", icon: LayoutDashboard, end: true },
       { label: "Target Explorer", to: "/targets", icon: Search },
     ],
   },
@@ -146,7 +146,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate = () => {} }) {
         </nav>
 
         <div className="mt-7 border-t border-white/[0.07] pt-5">
-          <Link to="/cosmos-preview" onClick={onNavigate} className="app-launch-card group">
+          <Link to="/" onClick={onNavigate} className="app-launch-card group">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-cyan-200/15 bg-cyan-200/[0.07]">
               <img src="/brand/astroshift-favicon-48.png" alt="" aria-hidden="true" className="h-full w-full object-contain" />
             </span>
@@ -162,7 +162,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate = () => {} }) {
           </Link>
 
           <div className="mt-5 px-1.5">
-            <p className="font-mono text-[8px] tracking-[0.17em] text-[#8ba2ae]">EXPOLORANGERS</p>
+            <p className="font-mono text-[8px] tracking-[0.17em] text-[#8ba2ae]">EXPLORANGERS</p>
             <p className="mt-1 text-[10px] text-[#718795]">AstroShift project team</p>
           </div>
         </div>
