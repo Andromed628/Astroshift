@@ -35,7 +35,7 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 # 1. Initialize Groq Client for Qwen Text/Science Model
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-QWEN_MODEL = "llama-3.3-70b-versatile"
+QWEN_MODEL = "openai/gpt-oss-20b"
 
 # 2. Configure Gemini Vision
 if GEMINI_API_KEY:
