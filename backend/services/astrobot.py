@@ -35,7 +35,7 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 # 1. Initialize Groq Client for Qwen Text/Science Model
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-QWEN_MODEL = "qwen/qwen3.8-27b"
+QWEN_MODEL = "llama-3.3-70b-versatile"
 
 # 2. Configure Gemini Vision
 if GEMINI_API_KEY:
@@ -90,7 +90,7 @@ async def unified_chat_endpoint(request: UnifiedChatRequest):
     if request.image_base64 and request.image_base64.strip():
         if GEMINI_API_KEY:
             try:
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 image_data = {"mime_type": "image/jpeg", "data": request.image_base64}
                 response = model.generate_content([request.message, image_data])
                 return {"response": response.text, "provider": "Gemini Vision"}
@@ -192,7 +192,7 @@ async def chat_science_text(request: TextChatRequest):
 async def chat_vision_analysis(request: VisionChatRequest):
     if GEMINI_API_KEY:
         try:
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             image_data = {"mime_type": "image/jpeg", "data": request.image_base64}
             response = model.generate_content([request.prompt, image_data])
             return {"role": "assistant", "content": response.text, "provider": "Gemini Vision"}
