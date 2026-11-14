@@ -263,7 +263,7 @@ export default function About() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-5 text-[10px] text-[#667d89]">
         <span className="font-mono tracking-[0.12em]">NASA SPACE APPS CHALLENGE 2026 · PLANET X AND SPHEREx</span>
-        <Link to="/" className="inline-flex items-center gap-1.5 font-semibold text-[#91aab5] transition hover:text-[#8ce7f5]">
+        <Link to="/mission-control" className="inline-flex items-center gap-1.5 font-semibold text-[#91aab5] transition hover:text-[#8ce7f5]">
           Return to Mission Control <ArrowUpRight size={12} />
         </Link>
       </div>

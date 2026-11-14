@@ -24,8 +24,17 @@ function ExperienceFallback({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<AppShell />}>
-        <Route index element={<MissionControl />} />
+      <Route
+        path="/"
+        element={
+          <Suspense fallback={<ExperienceFallback>INITIALIZING COSMOS ENGINE...</ExperienceFallback>}>
+            <CosmicPreview />
+          </Suspense>
+        }
+      />
+
+      <Route element={<AppShell />}>
+        <Route path="/mission-control" element={<MissionControl />} />
         <Route path="targets" element={<TargetExplorer />} />
         <Route path="observatory" element={<Observatory />} />
         <Route path="science" element={<ScienceLab />} />

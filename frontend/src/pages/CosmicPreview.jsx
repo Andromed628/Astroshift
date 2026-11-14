@@ -1187,10 +1187,10 @@ export default function CosmicPreview() {
               </p>
 
               <Link
-                to="/"
+                to="/mission-control"
                 className="mt-9 inline-flex items-center gap-3 rounded-full border border-cyan-100/35 bg-[#07111e]/75 px-7 py-4 font-mono text-[9px] font-semibold tracking-[0.18em] text-[#d7f4ff] shadow-[0_0_36px_rgba(74,168,255,0.12)] backdrop-blur-xl transition duration-300 hover:border-cyan-100/70 hover:bg-cyan-100/[0.12] hover:shadow-[0_0_46px_rgba(74,168,255,0.25)]"
               >
-                RETURN TO ASTROSHIFT
+                ENTER ASTROSHIFT
                 <span aria-hidden="true">→</span>
               </Link>
             </div>
@@ -1230,10 +1230,10 @@ export default function CosmicPreview() {
 
       <Link
         ref={returnNavigationRef}
-        to="/"
+        to="/mission-control"
         className="fixed bottom-7 left-6 z-40 inline-flex items-center gap-3 rounded-full border border-cyan-200/25 bg-[#09131e]/70 px-4 py-3 font-mono text-[8px] tracking-[0.14em] text-[#a5edf5] backdrop-blur-md transition duration-300 hover:border-cyan-200/50 hover:bg-cyan-200/[0.12] sm:left-9 lg:left-12"
       >
-        ← RETURN TO WORKSPACE
+        ← ENTER WORKSPACE
       </Link>
 
     </main>

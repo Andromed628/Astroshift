@@ -55,7 +55,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate = () => {} }) {
       >
         <div className="flex items-center justify-between px-1">
           <Link
-            to="/"
+            to="/mission-control"
             onClick={onNavigate}
             className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:outline-offset-4"
             aria-label="AstroShift Mission Control"
